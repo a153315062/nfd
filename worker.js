@@ -1,11 +1,12 @@
 const WEBHOOK = '/endpoint'
+
 const NOTIFY_INTERVAL = 3600 * 1000
 const fraudDb = 'https://raw.githubusercontent.com/LloydAsp/nfd/main/data/fraud.db'
 const notificationUrl = 'https://raw.githubusercontent.com/LloydAsp/nfd/main/data/notification.txt'
 const startMsgUrl = 'https://raw.githubusercontent.com/a153315062/nfd/refs/heads/main/data/startMessage.md'
 const enable_notification = true
 
-// --------- Telegram 辅助函数 ----------
+// ================= Telegram 工具函数 =================
 
 function apiUrl (config, methodName, params = null) {
   let query = ''
@@ -41,7 +42,7 @@ function forwardMessage (config, msg) {
   return requestTelegram(config, 'forwardMessage', makeReqBody(msg))
 }
 
-// --------- Module Worker 入口 ----------
+// ================= Worker 入口 =================
 
 export default {
   async fetch (request, env, ctx) {
@@ -54,7 +55,10 @@ export default {
     }
 
     if (!config.TOKEN || !config.SECRET || !config.ADMIN_UID) {
-      return new Response('ENV_BOT_TOKEN / ENV_BOT_SECRET / ENV_ADMIN_UID 未配置', { status: 500 })
+      return new Response(
+        'ENV_BOT_TOKEN / ENV_BOT_SECRET / ENV_ADMIN_UID 未配置',
+        { status: 500 }
+      )
     }
 
     if (url.pathname === WEBHOOK) {
@@ -69,11 +73,8 @@ export default {
   }
 }
 
-// --------- 业务逻辑 ----------
+// ================= Webhook 处理 =================
 
-/**
- * 处理 Telegram Webhook
- */
 async function handleWebhook (request, env, ctx, config) {
   if (request.headers.get('X-Telegram-Bot-Api-Secret-Token') !== config.SECRET) {
     return new Response('Unauthorized', { status: 403 })
@@ -104,7 +105,7 @@ async function onMessage (message, env, config) {
     if (!message?.reply_to_message?.chat) {
       return sendMessage(config, {
         chat_id: config.ADMIN_UID,
-        text: '使用方法，回复转发的消息，并发送回复消息，或者`/block`、`/unblock`、`/checkblock`等指令'
+        text: '使用方法：回复转发的消息，并发送回复消息，或使用 /block /unblock /checkblock'
       })
     }
 
@@ -118,7 +119,7 @@ async function onMessage (message, env, config) {
       return checkBlock(message, env, config)
     }
 
-    const guestChantId = await env.nfd.get(
+    const guestChantId = await env["1nfd"].get(
       'msg-map-' + message?.reply_to_message.message_id,
       { type: 'json' }
     )
@@ -135,12 +136,12 @@ async function onMessage (message, env, config) {
 
 async function handleGuestMessage (message, env, config) {
   const chatId = message.chat.id
-  const isblocked = await env.nfd.get('isblocked-' + chatId, { type: 'json' })
 
+  const isblocked = await env["1nfd"].get('isblocked-' + chatId, { type: 'json' })
   if (isblocked) {
     return sendMessage(config, {
       chat_id: chatId,
-      text: 'Your are blocked'
+      text: 'You are blocked'
     })
   }
 
@@ -150,10 +151,8 @@ async function handleGuestMessage (message, env, config) {
     message_id: message.message_id
   })
 
-  console.log(JSON.stringify(forwardReq))
-
   if (forwardReq.ok) {
-    await env.nfd.put('msg-map-' + forwardReq.result.message_id, chatId)
+    await env["1nfd"].put('msg-map-' + forwardReq.result.message_id, chatId)
   }
 
   return handleNotify(message, env, config)
@@ -165,14 +164,14 @@ async function handleNotify (message, env, config) {
   if (await isFraud(chatId)) {
     return sendMessage(config, {
       chat_id: config.ADMIN_UID,
-      text: `检测到骗子，UID${chatId}`
+      text: `检测到骗子：UID ${chatId}`
     })
   }
 
   if (enable_notification) {
-    const lastMsgTime = await env.nfd.get('lastmsg-' + chatId, { type: 'json' })
+    const lastMsgTime = await env["1nfd"].get('lastmsg-' + chatId, { type: 'json' })
     if (!lastMsgTime || Date.now() - lastMsgTime > NOTIFY_INTERVAL) {
-      await env.nfd.put('lastmsg-' + chatId, Date.now())
+      await env["1nfd"].put('lastmsg-' + chatId, Date.now())
       return sendMessage(config, {
         chat_id: config.ADMIN_UID,
         text: await fetch(notificationUrl).then(r => r.text())
@@ -182,7 +181,7 @@ async function handleNotify (message, env, config) {
 }
 
 async function handleBlock (message, env, config) {
-  const guestChantId = await env.nfd.get(
+  const guestChantId = await env["1nfd"].get(
     'msg-map-' + message.reply_to_message.message_id,
     { type: 'json' }
   )
@@ -194,44 +193,41 @@ async function handleBlock (message, env, config) {
     })
   }
 
-  await env.nfd.put('isblocked-' + guestChantId, true)
+  await env["1nfd"].put('isblocked-' + guestChantId, true)
 
   return sendMessage(config, {
     chat_id: config.ADMIN_UID,
-    text: `UID:${guestChantId}屏蔽成功`
+    text: `UID:${guestChantId} 屏蔽成功`
   })
 }
 
 async function handleUnBlock (message, env, config) {
-  const guestChantId = await env.nfd.get(
+  const guestChantId = await env["1nfd"].get(
     'msg-map-' + message.reply_to_message.message_id,
     { type: 'json' }
   )
 
-  await env.nfd.put('isblocked-' + guestChantId, false)
+  await env["1nfd"].put('isblocked-' + guestChantId, false)
 
   return sendMessage(config, {
     chat_id: config.ADMIN_UID,
-    text: `UID:${guestChantId}解除屏蔽成功`
+    text: `UID:${guestChantId} 解除了屏蔽`
   })
 }
 
 async function checkBlock (message, env, config) {
-  const guestChantId = await env.nfd.get(
+  const guestChantId = await env["1nfd"].get(
     'msg-map-' + message.reply_to_message.message_id,
     { type: 'json' }
   )
-  const blocked = await env.nfd.get('isblocked-' + guestChantId, { type: 'json' })
+  const blocked = await env["1nfd"].get('isblocked-' + guestChantId, { type: 'json' })
 
   return sendMessage(config, {
     chat_id: config.ADMIN_UID,
-    text: `UID:${guestChantId}` + (blocked ? '被屏蔽' : '没有被屏蔽')
+    text: `UID:${guestChantId} ` + (blocked ? '已被屏蔽' : '未屏蔽')
   })
 }
 
-/**
- * 设置 webhook
- */
 async function registerWebhook (request, config) {
   const requestUrl = new URL(request.url)
   const webhookUrl = `${requestUrl.protocol}//${requestUrl.hostname}${WEBHOOK}`
@@ -246,9 +242,6 @@ async function registerWebhook (request, config) {
   return new Response('ok' in r && r.ok ? 'Ok' : JSON.stringify(r, null, 2))
 }
 
-/**
- * 取消 webhook
- */
 async function unRegisterWebhook (config) {
   const r = await (
     await fetch(apiUrl(config, 'setWebhook', { url: '' }))
@@ -261,8 +254,6 @@ async function isFraud (id) {
   id = id.toString()
   const db = await fetch(fraudDb).then(r => r.text())
   const arr = db.split('\n').filter(v => v)
-  console.log(JSON.stringify(arr))
-  const flag = arr.filter(v => v === id).length !== 0
-  console.log(flag)
+  const flag = arr.includes(id)
   return flag
 }
