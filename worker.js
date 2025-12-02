@@ -4,7 +4,7 @@ const NOTIFY_INTERVAL = 3600 * 1000
 const fraudDb = 'https://raw.githubusercontent.com/LloydAsp/nfd/main/data/fraud.db'
 const notificationUrl = 'https://raw.githubusercontent.com/LloydAsp/nfd/main/data/notification.txt'
 const startMsgUrl = 'https://raw.githubusercontent.com/a153315062/nfd/refs/heads/main/data/startMessage.md'
-const enable_notification = true
+const enable_notification = false
 
 // ================= Telegram 工具函数 =================
 
